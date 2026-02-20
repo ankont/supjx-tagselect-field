@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="fields" method="upgrade" version="5.0">
+    <name>PLG_FIELDS_TAGSELECT</name>
+    <author>SuperSoft</author>
+    <creationDate>2026-02-20</creationDate>
+    <copyright>(C) 2026 SuperSoft</copyright>
+    <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+    <version>1.0.3</version>
+    <description>PLG_FIELDS_TAGSELECT_XML_DESCRIPTION</description>
+    <element>tagselect</element>
+
+    <files>
+        <filename plugin="tagselect">tagselect.php</filename>
+        <folder>fields</folder>
+        <folder>tmpl</folder>
+        <folder>params</folder>
+        <folder>language</folder>
+    </files>
+
+    <languages>
+        <language tag="en-GB">language/en-GB/plg_fields_tagselect.ini</language>
+        <language tag="en-GB">language/en-GB/plg_fields_tagselect.sys.ini</language>
+        <language tag="el-GR">language/el-GR/plg_fields_tagselect.ini</language>
+        <language tag="el-GR">language/el-GR/plg_fields_tagselect.sys.ini</language>
+    </languages>
+
+    <config>
+        <fields name="params">
+            <fieldset name="basic" />
+        </fields>
+    </config>
+</extension>
