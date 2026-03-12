@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate tag matches manifest version
+        shell: pwsh
+        run: |
+          [xml]$manifest = Get-Content 'plugin/tagselect.xml' -Raw
+          $versionNode = $manifest.SelectSingleNode('/extension/version')
+          $version = if ($null -ne $versionNode) { $versionNode.InnerText.Trim() } else { '' }
+          $tag = '${{ github.ref_name }}'
+          $normalizedTag = $tag.TrimStart('v')
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              throw "Version element not found in plugin/tagselect.xml."
+          }
+
+          if ($normalizedTag -ne $version) {
+              throw "Tag '$tag' does not match manifest version '$version'."
+          }
+
+      - name: Build installable ZIP
+        shell: pwsh
+        run: ./build/build.ps1
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            build/output/plg_fields_tagselect-v*.zip
