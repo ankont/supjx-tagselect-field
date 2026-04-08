@@ -17,6 +17,19 @@
             </field>
 
             <field
+                name="field_type"
+                type="radio"
+                layout="joomla.form.field.radio.switcher"
+                default="independent"
+                label="PLG_FIELDS_TAGSELECT_FIELD_TYPE_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_TYPE_DESC"
+                validate="options"
+            >
+                <option value="independent">PLG_FIELDS_TAGSELECT_FIELD_TYPE_OPTION_INDEPENDENT</option>
+                <option value="native_article_tags">PLG_FIELDS_TAGSELECT_FIELD_TYPE_OPTION_NATIVE_ARTICLE_TAGS</option>
+            </field>
+
+            <field
                 name="mode"
                 type="list"
                 default="ajax"
@@ -29,7 +42,20 @@
             </field>
 
             <field
-                name="root_parent_id"
+                name="tag_scope_mode"
+                type="list"
+                default="all"
+                label="PLG_FIELDS_TAGSELECT_FIELD_TAG_SCOPE_MODE_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_TAG_SCOPE_MODE_DESC"
+                validate="options"
+            >
+                <option value="all">PLG_FIELDS_TAGSELECT_FIELD_TAG_SCOPE_MODE_OPTION_ALL</option>
+                <option value="include">PLG_FIELDS_TAGSELECT_FIELD_TAG_SCOPE_MODE_OPTION_INCLUDE</option>
+                <option value="exclude">PLG_FIELDS_TAGSELECT_FIELD_TAG_SCOPE_MODE_OPTION_EXCLUDE</option>
+            </field>
+
+            <field
+                name="scope_root_ids"
                 type="tagselect"
                 mode="ajax"
                 multiple="true"
@@ -37,8 +63,9 @@
                 allow_tag_creation="0"
                 sync_mode_from="mode"
                 sync_mode_group="fieldparams"
-                label="PLG_FIELDS_TAGSELECT_FIELD_ROOT_PARENT_ID_LABEL"
-                description="PLG_FIELDS_TAGSELECT_FIELD_ROOT_PARENT_ID_DESC"
+                showon="tag_scope_mode:include,exclude"
+                label="PLG_FIELDS_TAGSELECT_FIELD_SCOPE_ROOT_IDS_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_SCOPE_ROOT_IDS_DESC"
             />
 
             <field
@@ -46,6 +73,7 @@
                 type="radio"
                 layout="joomla.form.field.radio.switcher"
                 default="1"
+                showon="field_type:independent[AND]tag_scope_mode:include"
                 label="PLG_FIELDS_TAGSELECT_FIELD_INCLUDE_DESCENDANTS_LABEL"
                 description="PLG_FIELDS_TAGSELECT_FIELD_INCLUDE_DESCENDANTS_DESC"
                 filter="integer"

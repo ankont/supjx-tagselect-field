@@ -55,6 +55,13 @@ class JFormFieldTagselect extends TagField
     protected $rootRows;
 
     /**
+     * Cached excluded root rows keyed by tag id.
+     *
+     * @var    array|null
+     */
+    protected $excludedRootRows;
+
+    /**
      * Cached Joomla tag tree root id.
      *
      * @var    integer|null
@@ -101,9 +108,24 @@ class JFormFieldTagselect extends TagField
         $this->restrictionConfig = null;
         $this->allowedRows       = null;
         $this->rootRows          = null;
+        $this->excludedRootRows  = null;
         $this->tagRootId         = null;
 
-        return parent::setup($element, $value, $group);
+        $result = parent::setup($element, $value, $group);
+
+        if (
+            $result
+            && $this->usesNativeTagsStorage()
+            && !$this->hasSubmittedFieldValue($group, (string) ($element['name'] ?? ''))
+        ) {
+            $this->value = $this->getManagedNativeTagIds();
+
+            if (!$this->multiple) {
+                $this->value = $this->value[0] ?? '';
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -220,15 +242,64 @@ class JFormFieldTagselect extends TagField
             return $this->restrictionConfig;
         }
 
-        $rootParentIds = $this->normaliseConfiguredIds($this->getAttribute('root_parent_id', []));
+        $fieldType = strtolower(trim((string) $this->getAttribute('field_type', '')));
 
-        $allowTagCreation = $this->toBool($this->getAttribute('allow_tag_creation', '0'));
+        if ($fieldType === '') {
+            $legacyStorageMode = strtolower(trim((string) $this->getAttribute('storage_mode', 'field_value')));
+            $fieldType         = $legacyStorageMode === 'native_tags' ? 'native_article_tags' : 'independent';
+        }
+
+        if ($fieldType !== 'native_article_tags' || !$this->isArticleNativeTagsForm()) {
+            $fieldType   = 'independent';
+            $storageMode = 'field_value';
+        } else {
+            $storageMode = 'native_tags';
+        }
+
+        $scopeRootIds = $this->normaliseConfiguredIds($this->getAttribute('scope_root_ids', []));
+
+        if (!$scopeRootIds) {
+            $scopeRootIds = $this->normaliseConfiguredIds($this->getAttribute('root_parent_id', []));
+        }
+
+        $scopeMode = strtolower(trim((string) $this->getAttribute('tag_scope_mode', '')));
+
+        if (!in_array($scopeMode, ['all', 'include', 'exclude'], true)) {
+            $legacyExcludedRootIds = $storageMode === 'native_tags'
+                ? $this->normaliseConfiguredIds($this->getAttribute('excluded_root_ids', []))
+                : [];
+
+            if ($scopeRootIds) {
+                $scopeMode = 'include';
+            } elseif ($legacyExcludedRootIds) {
+                $scopeMode   = 'exclude';
+                $scopeRootIds = $legacyExcludedRootIds;
+            } else {
+                $scopeMode = 'all';
+            }
+        }
+
+        if (!$scopeRootIds || $scopeMode === 'all') {
+            $scopeMode   = 'all';
+            $scopeRootIds = [];
+        }
+
+        $allowTagCreation  = $this->toBool($this->getAttribute('allow_tag_creation', '0'));
+        $includeDescendants = $fieldType === 'native_article_tags'
+            ? true
+            : ($scopeMode === 'include' && $scopeRootIds
+                ? $this->toBool($this->getAttribute('include_descendants', '1'))
+                : true);
 
         $this->restrictionConfig = [
-            'root_parent_ids'       => $rootParentIds,
-            'include_descendants'   => $rootParentIds ? $this->toBool($this->getAttribute('include_descendants', '1')) : true,
-            'leaf_only'             => $this->toBool($this->getAttribute('leaf_only', '0')),
-            'allow_tag_creation'    => $allowTagCreation,
+            'field_type'                => $fieldType,
+            'storage_mode'              => $storageMode,
+            'scope_mode'                => $scopeMode === 'all' ? 'none' : $scopeMode,
+            'root_parent_ids'           => $scopeMode === 'include' ? $scopeRootIds : [],
+            'excluded_root_ids'         => $scopeMode === 'exclude' ? $scopeRootIds : [],
+            'include_descendants'       => $includeDescendants,
+            'leaf_only'                 => $this->toBool($this->getAttribute('leaf_only', '0')),
+            'allow_tag_creation'        => $allowTagCreation,
             'allow_root_level_creation' => $allowTagCreation && $this->toBool($this->getAttribute('allow_root_level_creation', '0')),
         ];
 
@@ -244,7 +315,7 @@ class JFormFieldTagselect extends TagField
     {
         $config = $this->getRestrictionConfig();
 
-        return !empty($config['root_parent_ids']) || $config['leaf_only'];
+        return $config['scope_mode'] !== 'none' || $config['leaf_only'];
     }
 
     /**
@@ -301,6 +372,30 @@ class JFormFieldTagselect extends TagField
         $this->rootRows = $this->loadRowsByIds($rootParentIds);
 
         return $this->rootRows;
+    }
+
+    /**
+     * Load the configured excluded root rows keyed by tag id.
+     *
+     * @return  array
+     */
+    protected function getExcludedRootRows()
+    {
+        if ($this->excludedRootRows !== null) {
+            return $this->excludedRootRows;
+        }
+
+        $excludedRootIds = $this->getRestrictionConfig()['excluded_root_ids'];
+
+        if (!$excludedRootIds) {
+            $this->excludedRootRows = [];
+
+            return $this->excludedRootRows;
+        }
+
+        $this->excludedRootRows = $this->loadRowsByIds($excludedRootIds);
+
+        return $this->excludedRootRows;
     }
 
     /**
@@ -377,7 +472,21 @@ class JFormFieldTagselect extends TagField
      */
     protected function isRowAllowed($row, array $roots, array $config)
     {
-        if (!$config['root_parent_ids']) {
+        if ($config['scope_mode'] === 'none') {
+            return true;
+        }
+
+        if ($config['scope_mode'] === 'exclude') {
+            foreach ($this->getExcludedRootRows() as $root) {
+                if ((int) $row->value === (int) $root->value) {
+                    return false;
+                }
+
+                if ((int) $row->lft > (int) $root->lft && (int) $row->rgt < (int) $root->rgt) {
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -749,10 +858,18 @@ class JFormFieldTagselect extends TagField
             $value = empty($value->tags) ? [] : $value->tags;
         }
 
+        if (is_object($value) && !($value instanceof \Traversable)) {
+            $tagId = $this->extractStoredTagId($value);
+
+            return $tagId > 0 ? [$tagId] : [];
+        }
+
         if (is_string($value)) {
             $value = explode(',', $value);
         } elseif (is_int($value)) {
             $value = [$value];
+        } elseif ($value instanceof \Traversable) {
+            $value = iterator_to_array($value);
         }
 
         if (!is_array($value)) {
@@ -762,17 +879,11 @@ class JFormFieldTagselect extends TagField
         $ids = [];
 
         foreach ($value as $item) {
-            if (is_array($item)) {
-                continue;
+            $tagId = $this->extractStoredTagId($item);
+
+            if ($tagId > 0) {
+                $ids[] = $tagId;
             }
-
-            $item = trim((string) $item);
-
-            if ($item === '' || !is_numeric($item)) {
-                continue;
-            }
-
-            $ids[] = (int) $item;
         }
 
         return array_values(array_unique($ids));
@@ -1000,10 +1111,14 @@ class JFormFieldTagselect extends TagField
             return [];
         }
 
-        if (!$config['root_parent_ids']) {
+        if ($config['scope_mode'] !== 'include') {
             $rows = [];
 
             foreach ($this->loadCandidateRows() as $row) {
+                if ($config['scope_mode'] === 'exclude' && !$this->isRowAllowed($row, [], $config)) {
+                    continue;
+                }
+
                 $rows[(int) $row->value] = $row;
             }
 
@@ -1049,7 +1164,7 @@ class JFormFieldTagselect extends TagField
      */
     protected function getCreationParentId(array $config)
     {
-        if (count($config['root_parent_ids']) === 1) {
+        if ($config['scope_mode'] === 'include' && count($config['root_parent_ids']) === 1) {
             $rootParentId = $config['root_parent_ids'][0];
 
             return isset($this->getRootRows()[$rootParentId]) ? $rootParentId : 0;
@@ -1060,6 +1175,83 @@ class JFormFieldTagselect extends TagField
         }
 
         return 0;
+    }
+
+    /**
+     * Determine whether the field is bound to native article tags.
+     *
+     * @return  boolean
+     */
+    protected function usesNativeTagsStorage()
+    {
+        return $this->getRestrictionConfig()['storage_mode'] === 'native_tags';
+    }
+
+    /**
+     * Determine whether the current form is the article edit form.
+     *
+     * @return  boolean
+     */
+    protected function isArticleNativeTagsForm()
+    {
+        return $this->form && $this->form->getName() === 'com_content.article';
+    }
+
+    /**
+     * Determine whether the current form data already contains a value for this field.
+     *
+     * This lets native-tags mode distinguish between an initial empty custom-field value and an
+     * explicit empty submission where the editor cleared the selection.
+     *
+     * @param   string|null  $group  Field group.
+     * @param   string       $name   Field name.
+     *
+     * @return  boolean
+     */
+    protected function hasSubmittedFieldValue($group, $name)
+    {
+        if (!$this->form) {
+            return false;
+        }
+
+        $group = trim((string) $group);
+        $name  = trim((string) $name);
+
+        if ($name === '') {
+            return false;
+        }
+
+        $key = $group !== '' ? $group . '.' . $name : $name;
+
+        return $this->form->getData()->exists($key);
+    }
+
+    /**
+     * Get the current native article tag ids constrained to this field's managed subset.
+     *
+     * @return  array
+     */
+    protected function getManagedNativeTagIds()
+    {
+        if (!$this->form) {
+            return [];
+        }
+
+        $nativeTagIds = $this->normaliseStoredValues($this->form->getValue('tags', null, []));
+
+        if (!$nativeTagIds) {
+            return [];
+        }
+
+        if (!$this->hasActiveRestrictions()) {
+            return $nativeTagIds;
+        }
+
+        $allowedLookup = array_fill_keys(array_keys($this->getAllowedRows()), true);
+
+        return array_values(array_filter($nativeTagIds, static function ($tagId) use ($allowedLookup) {
+            return isset($allowedLookup[$tagId]);
+        }));
     }
 
     /**
@@ -1157,6 +1349,40 @@ class JFormFieldTagselect extends TagField
 
             $candidate = StringHelper::increment($candidate, 'dash');
         }
+    }
+
+    /**
+     * Extract a numeric tag id from mixed stored/native payloads.
+     *
+     * @param   mixed  $item  Candidate tag payload.
+     *
+     * @return  integer
+     */
+    protected function extractStoredTagId($item)
+    {
+        if (is_array($item)) {
+            foreach (['value', 'id', 'tag_id'] as $key) {
+                if (array_key_exists($key, $item) && is_numeric((string) $item[$key])) {
+                    return (int) $item[$key];
+                }
+            }
+
+            return 0;
+        }
+
+        if (is_object($item)) {
+            foreach (['value', 'id', 'tag_id'] as $property) {
+                if (isset($item->$property) && is_numeric((string) $item->$property)) {
+                    return (int) $item->$property;
+                }
+            }
+
+            return 0;
+        }
+
+        $item = trim((string) $item);
+
+        return $item !== '' && is_numeric($item) ? (int) $item : 0;
     }
 
     /**
