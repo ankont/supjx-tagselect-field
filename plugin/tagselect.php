@@ -39,6 +39,7 @@ class PlgFieldsTagselect extends FieldsPlugin
 
         $mode = 'ajax';
         $multiple = true;
+        $allowTagCreation = false;
 
         if (isset($field->fieldparams) && is_object($field->fieldparams) && method_exists($field->fieldparams, 'get')) {
             $configuredMode = strtolower((string) $field->fieldparams->get('mode', 'ajax'));
@@ -48,10 +49,11 @@ class PlgFieldsTagselect extends FieldsPlugin
             }
 
             $multiple = (int) $field->fieldparams->get('multiple', 1) === 1;
+            $allowTagCreation = (int) $field->fieldparams->get('allow_tag_creation', 0) === 1;
         }
 
         $fieldNode->setAttribute('mode', $mode);
-        $fieldNode->setAttribute('custom', 'deny');
+        $fieldNode->setAttribute('custom', $allowTagCreation ? 'allow' : 'deny');
         $fieldNode->setAttribute('multiple', $multiple ? 'true' : 'false');
 
         return $fieldNode;

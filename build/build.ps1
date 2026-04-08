@@ -128,7 +128,7 @@ if (-not (Test-Path $pluginRoot)) {
 $version = Get-ManifestVersion -ManifestPath $manifestPath
 
 Ensure-CleanDirectory -Path $stageRoot
-New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
+Ensure-CleanDirectory -Path $outputRoot
 
 $pluginStage = Join-Path $stageRoot 'plugin'
 New-Item -ItemType Directory -Path $pluginStage | Out-Null

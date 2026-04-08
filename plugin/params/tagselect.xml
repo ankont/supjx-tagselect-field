@@ -27,6 +27,76 @@
                 <option value="ajax">PLG_FIELDS_TAGSELECT_FIELD_MODE_OPTION_AJAX</option>
                 <option value="nested">PLG_FIELDS_TAGSELECT_FIELD_MODE_OPTION_NESTED</option>
             </field>
+
+            <field
+                name="root_parent_id"
+                type="tagselect"
+                mode="ajax"
+                multiple="true"
+                custom="deny"
+                allow_tag_creation="0"
+                sync_mode_from="mode"
+                sync_mode_group="fieldparams"
+                label="PLG_FIELDS_TAGSELECT_FIELD_ROOT_PARENT_ID_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_ROOT_PARENT_ID_DESC"
+            />
+
+            <field
+                name="include_descendants"
+                type="radio"
+                layout="joomla.form.field.radio.switcher"
+                default="1"
+                label="PLG_FIELDS_TAGSELECT_FIELD_INCLUDE_DESCENDANTS_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_INCLUDE_DESCENDANTS_DESC"
+                filter="integer"
+                validate="options"
+            >
+                <option value="0">JNO</option>
+                <option value="1">JYES</option>
+            </field>
+
+            <field
+                name="leaf_only"
+                type="radio"
+                layout="joomla.form.field.radio.switcher"
+                default="0"
+                label="PLG_FIELDS_TAGSELECT_FIELD_LEAF_ONLY_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_LEAF_ONLY_DESC"
+                filter="integer"
+                validate="options"
+            >
+                <option value="0">JNO</option>
+                <option value="1">JYES</option>
+            </field>
+
+            <field
+                name="allow_tag_creation"
+                type="radio"
+                layout="joomla.form.field.radio.switcher"
+                default="0"
+                label="PLG_FIELDS_TAGSELECT_FIELD_ALLOW_TAG_CREATION_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_ALLOW_TAG_CREATION_DESC"
+                filter="integer"
+                validate="options"
+            >
+                <option value="0">JNO</option>
+                <option value="1">JYES</option>
+            </field>
+
+            <field
+                name="allow_root_level_creation"
+                type="radio"
+                layout="joomla.form.field.radio.switcher"
+                default="0"
+                showon="allow_tag_creation:1"
+                label="PLG_FIELDS_TAGSELECT_FIELD_ALLOW_ROOT_LEVEL_CREATION_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_ALLOW_ROOT_LEVEL_CREATION_DESC"
+                filter="integer"
+                validate="options"
+            >
+                <option value="0">JNO</option>
+                <option value="1">JYES</option>
+            </field>
         </fieldset>
     </fields>
 </form>
