@@ -23,6 +23,7 @@ Supported field parameters:
 - `scope_root_ids`: one-or-many root tags used by the current scope mode.
 - `include_descendants`: in Independent Tag Mode, include the whole selected subtree or only direct children.
 - `leaf_only`: allow only terminal tags inside the allowed subtree.
+- `frontend_output`: render automatic frontend output as tag links or plain text.
 - `allow_tag_creation`: optionally allow editors to create tags from the field.
 - `allow_root_level_creation`: optionally allow plain input to create top-level tags when no explicit parent path is given.
 
@@ -43,12 +44,14 @@ Behavior notes:
 - If there are zero or many scope roots, or the field uses `exclude`/`all` scope, plain input only creates a top-level tag when `allow_root_level_creation = Yes`.
 - If `allow_root_level_creation = Yes` in a restricted field, top-level tags also become selectable in that field.
 - In `Native Article Tag Handler`, save updates only the managed native-tag subset and leaves every other native article tag untouched.
+- Automatic frontend output can render inline tag links or plain text. For custom templates, the field object also exposes `tagselectTags` and `tagselectTagIds`.
 - Missing intermediate parents are not auto-created. Unresolvable paths fail safe instead of creating a literal tag title with `/`.
 - If a stored value later falls outside the allowed subtree because the config or tree changed, the field keeps the value visible and safe instead of breaking the form.
 
 Implementation note:
 
 - When subtree or leaf restrictions are active, the field disables the core unrestricted remote tag search and uses server-filtered options instead. The editor still gets a searchable selector in `ajax` mode, but only over the allowed tags.
+- During frontend rendering, `tagselectTags` contains structured tag objects with ids, titles, aliases, slugs, access and params. Use this in template overrides when plain text is not enough.
 
 ## Usage Examples
 
@@ -176,8 +179,8 @@ Release flow:
 3. Create and push a tag that matches the manifest version, prefixed with `v`:
 
 ```powershell
-git tag v1.5.1
-git push origin v1.5.1
+git tag v1.6.0
+git push origin v1.6.0
 ```
 
 4. GitHub Actions will:
@@ -188,7 +191,7 @@ git push origin v1.5.1
 
 Important:
 
-- The tag must match the manifest version exactly. Example: tag `v1.5.1` must match manifest version `1.5.1`.
+- The tag must match the manifest version exactly. Example: tag `v1.6.0` must match manifest version `1.6.0`.
 - Generated ZIP artifacts are intentionally kept out of git history.
 
 ## Install in Joomla 6

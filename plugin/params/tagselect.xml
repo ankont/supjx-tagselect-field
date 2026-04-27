@@ -98,6 +98,18 @@
             </field>
 
             <field
+                name="frontend_output"
+                type="list"
+                default="tag_links"
+                label="PLG_FIELDS_TAGSELECT_FIELD_FRONTEND_OUTPUT_LABEL"
+                description="PLG_FIELDS_TAGSELECT_FIELD_FRONTEND_OUTPUT_DESC"
+                validate="options"
+            >
+                <option value="tag_links">PLG_FIELDS_TAGSELECT_FIELD_FRONTEND_OUTPUT_OPTION_TAG_LINKS</option>
+                <option value="plain_text">PLG_FIELDS_TAGSELECT_FIELD_FRONTEND_OUTPUT_OPTION_PLAIN_TEXT</option>
+            </field>
+
+            <field
                 name="allow_tag_creation"
                 type="radio"
                 layout="joomla.form.field.radio.switcher"

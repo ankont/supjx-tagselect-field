@@ -105,9 +105,14 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
      */
     public function onCustomFieldsPrepareField($context, $item, $field)
     {
-        if ($this->isTypeSupported($field->type) && $this->isArticleContext((string) $context) && $this->isNativeTagsField($field)) {
-            $field->value    = $this->getManagedTagLabelsForField($field, $item);
-            $field->rawvalue = $field->value;
+        if ($this->isTypeSupported($field->type)) {
+            $field->tagselectRenderTags = $this->getRenderableTagsForField($field, $item, (string) $context);
+            $field->tagselectTags       = $field->tagselectRenderTags;
+            $field->tagselectTagIds     = $this->extractRenderableTagIds($field->tagselectRenderTags);
+
+            if ($this->isArticleContext((string) $context) && $this->isNativeTagsField($field)) {
+                $field->value = $this->extractRenderableTagTitles($field->tagselectRenderTags);
+            }
         }
 
         return parent::onCustomFieldsPrepareField($context, $item, $field);
@@ -193,7 +198,7 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
             return;
         }
 
-        $model = $this->getApplication()->bootComponent('com_fields')->getMVCFactory()
+        $model = Factory::getApplication()->bootComponent('com_fields')->getMVCFactory()
             ->createModel('Field', 'Administrator', ['ignore_request' => true]);
 
         foreach ($fields as $field) {
@@ -339,20 +344,139 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
      */
     protected function getManagedTagLabelsForField($field, $item): array
     {
+        return $this->extractRenderableTagTitles(
+            $this->buildRenderableTagsFromIds(
+                $this->filterManagedTagIds(
+                    $this->loadNativeTagIdsForItem($item),
+                    $this->getStorageConfig($field->fieldparams ?? null)
+                )
+            )
+        );
+    }
+
+    /**
+     * Build frontend renderable tag objects for a field instance.
+     *
+     * @param   object  $field    Field definition.
+     * @param   mixed   $item     Current item.
+     * @param   string  $context  Render context.
+     *
+     * @return  array
+     */
+    protected function getRenderableTagsForField($field, $item, string $context): array
+    {
+        if (!is_object($field) || empty($field->type) || !$this->isTypeSupported($field->type)) {
+            return [];
+        }
+
         $config = $this->getStorageConfig($field->fieldparams ?? null);
-        $tagIds = $this->filterManagedTagIds($this->loadNativeTagIdsForItem($item), $config);
-        $rows   = $this->loadRowsByIds($tagIds);
-        $labels = [];
+
+        if ($this->isArticleContext($context) && $config['storage_mode'] === 'native_tags') {
+            return $this->buildRenderableTagsFromIds(
+                $this->filterManagedTagIds($this->loadNativeTagIdsForItem($item), $config)
+            );
+        }
+
+        $rawValue = property_exists($field, 'rawvalue') ? $field->rawvalue : (property_exists($field, 'value') ? $field->value : []);
+        $tagIds   = $this->normaliseTagIds($rawValue);
+
+        if (!$tagIds && property_exists($field, 'value')) {
+            $tagIds = $this->normaliseTagIds($field->value);
+        }
+
+        return $this->buildRenderableTagsFromIds($tagIds);
+    }
+
+    /**
+     * Build renderable tag objects from tag ids.
+     *
+     * @param   array  $tagIds  Tag ids in display order.
+     *
+     * @return  array
+     */
+    protected function buildRenderableTagsFromIds(array $tagIds): array
+    {
+        if (!$tagIds) {
+            return [];
+        }
+
+        $rows = $this->loadRowsByIds($tagIds);
+        $tags = [];
 
         foreach ($tagIds as $tagId) {
-            if (isset($rows[$tagId])) {
-                $labels[] = (string) $rows[$tagId]->title;
-            } else {
-                $labels[] = Text::sprintf('PLG_FIELDS_TAGSELECT_INVALID_SELECTION_MISSING', $tagId);
+            $tagId = (int) $tagId;
+
+            if ($tagId <= 0 || !isset($rows[$tagId])) {
+                continue;
+            }
+
+            $row = $rows[$tagId];
+
+            $tags[] = (object) [
+                'id'      => $tagId,
+                'tag_id'  => $tagId,
+                'title'   => (string) $row->title,
+                'alias'   => (string) ($row->alias ?? ''),
+                'slug'    => $tagId . ':' . (string) ($row->alias ?? ''),
+                'access'  => isset($row->access) ? (int) $row->access : 1,
+                'params'  => (string) ($row->params ?? ''),
+                'display' => (string) $row->title,
+            ];
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Extract display titles from renderable tag objects.
+     *
+     * @param   array  $tags  Renderable tag objects.
+     *
+     * @return  array
+     */
+    protected function extractRenderableTagTitles(array $tags): array
+    {
+        $titles = [];
+
+        foreach ($tags as $tag) {
+            if (!is_object($tag)) {
+                continue;
+            }
+
+            $title = trim((string) ($tag->display ?? $tag->title ?? ''));
+
+            if ($title !== '') {
+                $titles[] = $title;
             }
         }
 
-        return $labels;
+        return $titles;
+    }
+
+    /**
+     * Extract ids from renderable tag objects.
+     *
+     * @param   array  $tags  Renderable tag objects.
+     *
+     * @return  array
+     */
+    protected function extractRenderableTagIds(array $tags): array
+    {
+        $ids = [];
+
+        foreach ($tags as $tag) {
+            if (!is_object($tag)) {
+                continue;
+            }
+
+            $tagId = (int) ($tag->tag_id ?? $tag->id ?? 0);
+
+            if ($tagId > 0) {
+                $ids[] = $tagId;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**
@@ -545,6 +669,9 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
                     $db->quoteName('a.path'),
                     $db->quoteName('a.title', 'text'),
                     $db->quoteName('a.title'),
+                    $db->quoteName('a.alias'),
+                    $db->quoteName('a.access'),
+                    $db->quoteName('a.params'),
                     $db->quoteName('a.level'),
                     $db->quoteName('a.parent_id'),
                     $db->quoteName('a.lft'),
@@ -620,7 +747,7 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
             return $tagRootId;
         }
 
-        $tagTable  = $this->getApplication()->bootComponent('com_tags')->getMVCFactory()->createTable('Tag', 'Administrator');
+        $tagTable  = Factory::getApplication()->bootComponent('com_tags')->getMVCFactory()->createTable('Tag', 'Administrator');
         $tagRootId = (int) $tagTable->getRootId();
 
         return $tagRootId;
