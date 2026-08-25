@@ -1210,7 +1210,7 @@ class JFormFieldTagselect extends TagField
      */
     protected function hasSubmittedFieldValue($group, $name)
     {
-        if (!$this->form) {
+        if (!$this->form || !$this->isSubmittedFormRequest()) {
             return false;
         }
 
@@ -1227,6 +1227,22 @@ class JFormFieldTagselect extends TagField
     }
 
     /**
+     * Determine whether the current request is submitting form data.
+     *
+     * @return  boolean
+     */
+    protected function isSubmittedFormRequest()
+    {
+        try {
+            $method = strtoupper((string) Factory::getApplication()->getInput()->getMethod());
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        return in_array($method, ['POST', 'PUT', 'PATCH'], true);
+    }
+
+    /**
      * Get the current native article tag ids constrained to this field's managed subset.
      *
      * @return  array
@@ -1238,6 +1254,17 @@ class JFormFieldTagselect extends TagField
         }
 
         $nativeTagIds = $this->normaliseStoredValues($this->form->getValue('tags', null, []));
+
+        if (!$nativeTagIds) {
+            $itemId = (int) $this->form->getValue('id', null, 0);
+
+            if ($itemId > 0) {
+                $helper = new TagsHelper();
+                $helper->getTagIds($itemId, 'com_content.article');
+
+                $nativeTagIds = $this->normaliseStoredValues($helper);
+            }
+        }
 
         if (!$nativeTagIds) {
             return [];

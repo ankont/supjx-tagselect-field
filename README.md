@@ -179,8 +179,8 @@ Release flow:
 3. Create and push a tag that matches the manifest version, prefixed with `v`:
 
 ```powershell
-git tag v1.6.0
-git push origin v1.6.0
+git tag v1.6.1
+git push origin v1.6.1
 ```
 
 4. GitHub Actions will:
@@ -191,7 +191,7 @@ git push origin v1.6.0
 
 Important:
 
-- The tag must match the manifest version exactly. Example: tag `v1.6.0` must match manifest version `1.6.0`.
+- The tag must match the manifest version exactly. Example: tag `v1.6.1` must match manifest version `1.6.1`.
 - Generated ZIP artifacts are intentionally kept out of git history.
 
 ## Install in Joomla 6
