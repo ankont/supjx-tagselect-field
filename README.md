@@ -30,7 +30,7 @@ Supported field parameters:
 Behavior notes:
 
 - If `field_type = independent`, the field stores its own custom-field value, as before.
-- If `field_type = native_article_tags`, the field reads from and writes to native article or category `tags`. The stored parameter name is retained, while the UI calls this `Native Joomla Tag Handler`.
+- If `field_type = native_tags`, the field reads from and writes to native article or category `tags`.
 - Native handling is only available for `com_content.article` and `com_content.categories`. In any other context the option is disabled and runtime behavior safely falls back to independent custom-field storage.
 - If `tag_scope_mode = all`, the field can use the full tag tree.
 - If `tag_scope_mode = include`, editors only see tags from the union of the selected branches.
@@ -108,7 +108,7 @@ Result:
 ### Example 4: Native branch-backed article tags
 
 - Field name: `worksheet_type`
-- `field_type`: `native_article_tags`
+- `field_type`: `native_tags`
 - `tag_scope_mode`: `include`
 - `scope_root_ids`: tag `Worksheet Type`
 - `scope_depth`: `0` (unlimited)
@@ -125,7 +125,7 @@ Result:
 ### Example 5: Remaining native tags field
 
 - Field name: `other_tags`
-- `field_type`: `native_article_tags`
+- `field_type`: `native_tags`
 - `tag_scope_mode`: `exclude`
 - `scope_root_ids`: tags `Grade`, `Theme`, `Period`, `Series`
 - `leaf_only`: `No`
@@ -142,7 +142,7 @@ Result:
 
 - Field context: Categories (`com_content.categories`)
 - Field name: `category_taxonomy`
-- `field_type`: `native_article_tags` (`Native Joomla Tag Handler` in the UI)
+- `field_type`: `native_tags`
 - `tag_scope_mode`: `all`
 - `scope_depth`: `1`
 - `allow_tag_creation`: `No`
@@ -243,8 +243,8 @@ Then install or discover the plugin through Joomla as needed.
 12. With `allow_root_level_creation = No`, type plain input without a parent path in a multi-root field and confirm the field does nothing.
 13. With `allow_root_level_creation = Yes`, type plain input without a parent path and confirm a top-level tag is created and remains selectable.
 14. Type an unresolvable path like `Missing Parent/New Child` and confirm the field does not create a literal tag containing `/`.
-15. Set `field_type = native_article_tags` with `tag_scope_mode = include`, save an article, and confirm the matching native article tags are updated while unrelated native tags remain untouched.
-16. Set `field_type = native_article_tags`, `tag_scope_mode = all`, and `scope_depth = 1`; confirm only top-level tags are selectable.
+15. Set `field_type = native_tags` with `tag_scope_mode = include`, save an article, and confirm the matching native article tags are updated while unrelated native tags remain untouched.
+16. Set `field_type = native_tags`, `tag_scope_mode = all`, and `scope_depth = 1`; confirm only top-level tags are selectable.
 17. Create the same field in the Categories context, save a category, and confirm its native category tags reload in the field.
 18. Create a tagselect field in an unsupported context and confirm the native option is disabled and normal custom-field storage is used.
-19. Set `field_type = native_article_tags` with `tag_scope_mode = exclude`, save an article, and confirm the field manages the inverse "other tags" subset.
+19. Set `field_type = native_tags` with `tag_scope_mode = exclude`, save an article, and confirm the field manages the inverse "other tags" subset.

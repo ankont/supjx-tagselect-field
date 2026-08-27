@@ -50,7 +50,7 @@ class JFormFieldTagselectfieldtype extends RadioField
         }
 
         foreach ($options as $option) {
-            if ((string) $option->value === 'native_article_tags') {
+            if ((string) $option->value === 'native_tags') {
                 $option->disable = true;
             }
         }

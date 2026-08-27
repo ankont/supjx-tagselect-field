@@ -26,7 +26,7 @@
                 validate="options"
             >
                 <option value="independent">PLG_FIELDS_TAGSELECT_FIELD_TYPE_OPTION_INDEPENDENT</option>
-                <option value="native_article_tags">PLG_FIELDS_TAGSELECT_FIELD_TYPE_OPTION_NATIVE_ARTICLE_TAGS</option>
+                <option value="native_tags">PLG_FIELDS_TAGSELECT_FIELD_TYPE_OPTION_NATIVE_TAGS</option>
             </field>
 
             <field

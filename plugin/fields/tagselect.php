@@ -246,10 +246,10 @@ class JFormFieldTagselect extends TagField
 
         if ($fieldType === '') {
             $legacyStorageMode = strtolower(trim((string) $this->getAttribute('storage_mode', 'field_value')));
-            $fieldType         = $legacyStorageMode === 'native_tags' ? 'native_article_tags' : 'independent';
+            $fieldType         = $legacyStorageMode === 'native_tags' ? 'native_tags' : 'independent';
         }
 
-        if ($fieldType !== 'native_article_tags' || $this->getNativeTagTypeAliasForForm() === '') {
+        if ($fieldType !== 'native_tags' || $this->getNativeTagTypeAliasForForm() === '') {
             $fieldType   = 'independent';
             $storageMode = 'field_value';
         } else {

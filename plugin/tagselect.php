@@ -315,14 +315,14 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
 
         if ($fieldType === '') {
             $legacyStorageMode = strtolower(trim((string) $params->get('storage_mode', 'field_value')));
-            $fieldType         = $legacyStorageMode === 'native_tags' ? 'native_article_tags' : 'independent';
+            $fieldType         = $legacyStorageMode === 'native_tags' ? 'native_tags' : 'independent';
         }
 
-        if ($fieldType !== 'native_article_tags') {
+        if ($fieldType !== 'native_tags') {
             $fieldType = 'independent';
         }
 
-        $storageMode = $fieldType === 'native_article_tags' ? 'native_tags' : 'field_value';
+        $storageMode = $fieldType === 'native_tags' ? 'native_tags' : 'field_value';
 
         $scopeRootIds = $this->normaliseConfiguredIds($params->get('scope_root_ids', []));
 
