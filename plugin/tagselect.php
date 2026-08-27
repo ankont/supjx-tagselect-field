@@ -110,7 +110,7 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
             $field->tagselectTags       = $field->tagselectRenderTags;
             $field->tagselectTagIds     = $this->extractRenderableTagIds($field->tagselectRenderTags);
 
-            if ($this->isArticleContext((string) $context) && $this->isNativeTagsField($field)) {
+            if ($this->getNativeContextConfig((string) $context, $item) && $this->isNativeTagsField($field)) {
                 $field->value = $this->extractRenderableTagTitles($field->tagselectRenderTags);
             }
         }
@@ -119,7 +119,7 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
     }
 
     /**
-     * Merge native-tag-backed field selections into the article tag payload.
+     * Merge native-tag-backed field selections into the Joomla item tag payload.
      *
      * @param   BeforeSaveEvent  $event  The event.
      *
@@ -128,25 +128,30 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
     public function handleContentBeforeSave(BeforeSaveEvent $event): void
     {
         $context = (string) $event->getArgument('context', '');
+        $item    = $event->getArgument('subject');
+        $nativeContext = $this->getNativeContextConfig($context, $item);
 
-        if (!$this->isArticleContext($context)) {
+        if (!$nativeContext) {
             return;
         }
 
-        $item = $event->getArgument('subject');
         $data = $event->getArgument('data', []);
 
         if (!is_object($item) || !is_array($data) || empty($data['com_fields']) || !is_array($data['com_fields'])) {
             return;
         }
 
-        $fields = $this->getNativeTagselectFields($context, $item);
+        $fields = $this->getNativeTagselectFields($nativeContext, $item);
 
         if (!$fields) {
             return;
         }
 
-        $nativeTagIds = $this->normaliseTagIds(property_exists($item, 'newTags') ? $item->newTags : $this->loadNativeTagIdsForItem($item));
+        $nativeTagIds = $this->normaliseTagIds(
+            property_exists($item, 'newTags')
+                ? $item->newTags
+                : $this->loadNativeTagIdsForItem($item, $nativeContext['tag_type_alias'])
+        );
 
         foreach ($fields as $field) {
             if (!array_key_exists($field->name, $data['com_fields'])) {
@@ -154,7 +159,10 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
             }
 
             $config           = $this->getStorageConfig($field->fieldparams ?? null);
-            $submittedTagIds  = $this->normaliseTagIds($data['com_fields'][$field->name]);
+            $submittedTagIds  = $this->filterManagedTagIds(
+                $this->normaliseTagIds($data['com_fields'][$field->name]),
+                $config
+            );
             $managedCurrentIds = $this->filterManagedTagIds($nativeTagIds, $config);
 
             $nativeTagIds = array_values(array_unique(array_merge(
@@ -181,18 +189,18 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
     public function handleContentAfterSave(AfterSaveEvent $event): void
     {
         $context = (string) $event->getArgument('context', '');
+        $item    = $event->getArgument('subject');
+        $nativeContext = $this->getNativeContextConfig($context, $item);
 
-        if (!$this->isArticleContext($context)) {
+        if (!$nativeContext) {
             return;
         }
-
-        $item = $event->getArgument('subject');
 
         if (!is_object($item) || empty($item->id)) {
             return;
         }
 
-        $fields = $this->getNativeTagselectFields($context, $item);
+        $fields = $this->getNativeTagselectFields($nativeContext, $item);
 
         if (!$fields) {
             return;
@@ -207,19 +215,51 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
     }
 
     /**
-     * Determine whether the given context is the native article tag context.
+     * Map supported event/render contexts to their custom-field context and native tag alias.
      *
      * @param   string  $context  Event or render context.
+     * @param   object  $item     Current item.
      *
-     * @return  boolean
+     * @return  array|null
      */
-    protected function isArticleContext(string $context): bool
+    protected function getNativeContextConfig(string $context, $item = null): ?array
     {
-        return $context === 'com_content.article';
+        if ($context === 'com_content.article') {
+            return [
+                'fields_context' => 'com_content.article',
+                'tag_type_alias' => 'com_content.article',
+            ];
+        }
+
+        if ($context === 'com_categories.category') {
+            if (!is_object($item) || (string) ($item->extension ?? '') !== 'com_content') {
+                return null;
+            }
+
+            $item->catid = (int) ($item->id ?? 0);
+
+            return [
+                'fields_context' => 'com_content.categories',
+                'tag_type_alias' => 'com_content.category',
+            ];
+        }
+
+        if (in_array($context, ['com_content.categories', 'com_content.category'], true)) {
+            if (is_object($item) && !isset($item->catid)) {
+                $item->catid = (int) ($item->id ?? 0);
+            }
+
+            return [
+                'fields_context' => 'com_content.categories',
+                'tag_type_alias' => 'com_content.category',
+            ];
+        }
+
+        return null;
     }
 
     /**
-     * Determine whether a field uses native article tags as its backing store.
+     * Determine whether a field uses native Joomla tags as its backing store.
      *
      * @param   object  $field  The field definition.
      *
@@ -237,18 +277,14 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
     /**
      * Get the native tag backed field definitions for the current item.
      *
-     * @param   string  $context  Item context.
+     * @param   array   $nativeContext  Native context mapping.
      * @param   object  $item     The item or save table.
      *
      * @return  array
      */
-    protected function getNativeTagselectFields(string $context, $item): array
+    protected function getNativeTagselectFields(array $nativeContext, $item): array
     {
-        if (!$this->isArticleContext($context)) {
-            return [];
-        }
-
-        $fields = FieldsHelper::getFields($context, $item);
+        $fields = FieldsHelper::getFields($nativeContext['fields_context'], $item);
 
         if (!$fields) {
             return [];
@@ -314,12 +350,8 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
             $scopeRootIds = [];
         }
 
-        $allowTagCreation  = $this->toBool($params->get('allow_tag_creation', '0'));
-        $includeDescendants = $fieldType === 'native_article_tags'
-            ? true
-            : ($scopeMode === 'include' && $scopeRootIds
-                ? $this->toBool($params->get('include_descendants', '1'))
-                : true);
+        $allowTagCreation = $this->toBool($params->get('allow_tag_creation', '0'));
+        $scopeDepth       = max(0, (int) $params->get('scope_depth', 0));
 
         return [
             'field_type'                => $fieldType,
@@ -327,31 +359,11 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
             'scope_mode'                => $scopeMode === 'all' ? 'none' : $scopeMode,
             'root_parent_ids'           => $scopeMode === 'include' ? $scopeRootIds : [],
             'excluded_root_ids'         => $scopeMode === 'exclude' ? $scopeRootIds : [],
-            'include_descendants'       => $includeDescendants,
+            'scope_depth'               => $scopeMode === 'exclude' ? 0 : $scopeDepth,
             'leaf_only'                 => $this->toBool($params->get('leaf_only', '0')),
             'allow_tag_creation'        => $allowTagCreation,
             'allow_root_level_creation' => $allowTagCreation && $this->toBool($params->get('allow_root_level_creation', '0')),
         ];
-    }
-
-    /**
-     * Return the managed native-tag labels for frontend/manual display.
-     *
-     * @param   object  $field  Field definition.
-     * @param   object  $item   Rendered item.
-     *
-     * @return  array
-     */
-    protected function getManagedTagLabelsForField($field, $item): array
-    {
-        return $this->extractRenderableTagTitles(
-            $this->buildRenderableTagsFromIds(
-                $this->filterManagedTagIds(
-                    $this->loadNativeTagIdsForItem($item),
-                    $this->getStorageConfig($field->fieldparams ?? null)
-                )
-            )
-        );
     }
 
     /**
@@ -370,10 +382,14 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
         }
 
         $config = $this->getStorageConfig($field->fieldparams ?? null);
+        $nativeContext = $this->getNativeContextConfig($context, $item);
 
-        if ($this->isArticleContext($context) && $config['storage_mode'] === 'native_tags') {
+        if ($nativeContext && $config['storage_mode'] === 'native_tags') {
             return $this->buildRenderableTagsFromIds(
-                $this->filterManagedTagIds($this->loadNativeTagIdsForItem($item), $config)
+                $this->filterManagedTagIds(
+                    $this->loadNativeTagIdsForItem($item, $nativeContext['tag_type_alias']),
+                    $config
+                )
             );
         }
 
@@ -480,13 +496,14 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
     }
 
     /**
-     * Load the current native article tag ids for the given item.
+     * Load the current native tag ids for the given item.
      *
-     * @param   object  $item  Render/save item.
+     * @param   object  $item       Render/save item.
+     * @param   string  $typeAlias  Joomla tag type alias.
      *
      * @return  array
      */
-    protected function loadNativeTagIdsForItem($item): array
+    protected function loadNativeTagIdsForItem($item, string $typeAlias): array
     {
         if (is_object($item) && property_exists($item, 'newTags')) {
             $tagIds = $this->normaliseTagIds($item->newTags);
@@ -509,7 +526,7 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
         }
 
         $helper = new TagsHelper();
-        $helper->getTagIds((int) $item->id, 'com_content.article');
+        $helper->getTagIds((int) $item->id, $typeAlias);
 
         return $this->normaliseTagIds($helper);
     }
@@ -589,6 +606,10 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
      */
     protected function isRowManagedByConfig($row, array $config): bool
     {
+        if ($config['scope_mode'] === 'none') {
+            return $config['scope_depth'] === 0 || (int) $row->level <= $config['scope_depth'];
+        }
+
         if ($config['scope_mode'] === 'include') {
             if ($config['allow_root_level_creation'] && $this->isRootLevelTagRow($row)) {
                 return true;
@@ -600,17 +621,13 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
                 return false;
             }
 
-            if ($config['include_descendants']) {
-                foreach ($roots as $root) {
-                    if ((int) $row->lft > (int) $root->lft && (int) $row->rgt < (int) $root->rgt) {
-                        return true;
-                    }
+            foreach ($roots as $root) {
+                if ($this->isRowWithinScopeDepth($row, $root, $config['scope_depth'])) {
+                    return true;
                 }
-
-                return false;
             }
 
-            return in_array((int) $row->parent_id, $config['root_parent_ids'], true);
+            return false;
         }
 
         if ($config['scope_mode'] === 'exclude') {
@@ -628,6 +645,24 @@ class PlgFieldsTagselect extends FieldsPlugin implements SubscriberInterface
         }
 
         return true;
+    }
+
+    /**
+     * Check whether a row is a descendant within the configured number of levels.
+     *
+     * @param   object   $row         Candidate row.
+     * @param   object   $root        Scope root row.
+     * @param   integer  $scopeDepth  Zero for unlimited, otherwise maximum relative depth.
+     *
+     * @return  boolean
+     */
+    protected function isRowWithinScopeDepth($row, $root, int $scopeDepth): bool
+    {
+        if ((int) $row->lft <= (int) $root->lft || (int) $row->rgt >= (int) $root->rgt) {
+            return false;
+        }
+
+        return $scopeDepth === 0 || ((int) $row->level - (int) $root->level) <= $scopeDepth;
     }
 
     /**

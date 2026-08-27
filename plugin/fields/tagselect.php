@@ -249,7 +249,7 @@ class JFormFieldTagselect extends TagField
             $fieldType         = $legacyStorageMode === 'native_tags' ? 'native_article_tags' : 'independent';
         }
 
-        if ($fieldType !== 'native_article_tags' || !$this->isArticleNativeTagsForm()) {
+        if ($fieldType !== 'native_article_tags' || $this->getNativeTagTypeAliasForForm() === '') {
             $fieldType   = 'independent';
             $storageMode = 'field_value';
         } else {
@@ -284,12 +284,8 @@ class JFormFieldTagselect extends TagField
             $scopeRootIds = [];
         }
 
-        $allowTagCreation  = $this->toBool($this->getAttribute('allow_tag_creation', '0'));
-        $includeDescendants = $fieldType === 'native_article_tags'
-            ? true
-            : ($scopeMode === 'include' && $scopeRootIds
-                ? $this->toBool($this->getAttribute('include_descendants', '1'))
-                : true);
+        $allowTagCreation = $this->toBool($this->getAttribute('allow_tag_creation', '0'));
+        $scopeDepth       = max(0, (int) $this->getAttribute('scope_depth', 0));
 
         $this->restrictionConfig = [
             'field_type'                => $fieldType,
@@ -297,7 +293,7 @@ class JFormFieldTagselect extends TagField
             'scope_mode'                => $scopeMode === 'all' ? 'none' : $scopeMode,
             'root_parent_ids'           => $scopeMode === 'include' ? $scopeRootIds : [],
             'excluded_root_ids'         => $scopeMode === 'exclude' ? $scopeRootIds : [],
-            'include_descendants'       => $includeDescendants,
+            'scope_depth'               => $scopeMode === 'exclude' ? 0 : $scopeDepth,
             'leaf_only'                 => $this->toBool($this->getAttribute('leaf_only', '0')),
             'allow_tag_creation'        => $allowTagCreation,
             'allow_root_level_creation' => $allowTagCreation && $this->toBool($this->getAttribute('allow_root_level_creation', '0')),
@@ -315,7 +311,7 @@ class JFormFieldTagselect extends TagField
     {
         $config = $this->getRestrictionConfig();
 
-        return $config['scope_mode'] !== 'none' || $config['leaf_only'];
+        return $config['scope_mode'] !== 'none' || $config['scope_depth'] > 0 || $config['leaf_only'];
     }
 
     /**
@@ -473,7 +469,7 @@ class JFormFieldTagselect extends TagField
     protected function isRowAllowed($row, array $roots, array $config)
     {
         if ($config['scope_mode'] === 'none') {
-            return true;
+            return $config['scope_depth'] === 0 || (int) $row->level <= $config['scope_depth'];
         }
 
         if ($config['scope_mode'] === 'exclude') {
@@ -498,17 +494,31 @@ class JFormFieldTagselect extends TagField
             return false;
         }
 
-        if ($config['include_descendants']) {
-            foreach ($roots as $root) {
-                if ((int) $row->lft > (int) $root->lft && (int) $row->rgt < (int) $root->rgt) {
-                    return true;
-                }
+        foreach ($roots as $root) {
+            if ($this->isRowWithinScopeDepth($row, $root, $config['scope_depth'])) {
+                return true;
             }
+        }
 
+        return false;
+    }
+
+    /**
+     * Check whether a row is a descendant within the configured number of levels.
+     *
+     * @param   object   $row         Candidate row.
+     * @param   object   $root        Scope root row.
+     * @param   integer  $scopeDepth  Zero for unlimited, otherwise maximum relative depth.
+     *
+     * @return  boolean
+     */
+    protected function isRowWithinScopeDepth($row, $root, $scopeDepth)
+    {
+        if ((int) $row->lft <= (int) $root->lft || (int) $row->rgt >= (int) $root->rgt) {
             return false;
         }
 
-        return in_array((int) $row->parent_id, $config['root_parent_ids'], true);
+        return $scopeDepth === 0 || ((int) $row->level - (int) $root->level) <= $scopeDepth;
     }
 
     /**
@@ -1115,7 +1125,7 @@ class JFormFieldTagselect extends TagField
             $rows = [];
 
             foreach ($this->loadCandidateRows() as $row) {
-                if ($config['scope_mode'] === 'exclude' && !$this->isRowAllowed($row, [], $config)) {
+                if (!$this->isRowAllowed($row, [], $config) || !$this->canCreateChildWithinScope($row, [], $config)) {
                     continue;
                 }
 
@@ -1133,26 +1143,49 @@ class JFormFieldTagselect extends TagField
 
         $rows = $roots;
 
-        if ($config['include_descendants']) {
-            foreach ($this->loadCandidateRows() as $row) {
-                foreach ($roots as $root) {
-                    if ((int) $row->lft > (int) $root->lft && (int) $row->rgt < (int) $root->rgt) {
-                        $rows[(int) $row->value] = $row;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if ($config['allow_root_level_creation']) {
-            foreach ($this->loadCandidateRows() as $row) {
-                if ($this->isRootLevelTagRow($row)) {
-                    $rows[(int) $row->value] = $row;
-                }
+        foreach ($this->loadCandidateRows() as $row) {
+            if ($this->isRowAllowed($row, $roots, $config) && $this->canCreateChildWithinScope($row, $roots, $config)) {
+                $rows[(int) $row->value] = $row;
             }
         }
 
         return $rows;
+    }
+
+    /**
+     * Check whether creating a child below a row would remain inside the configured depth.
+     *
+     * @param   object  $row     Candidate parent row.
+     * @param   array   $roots   Include root rows.
+     * @param   array   $config  Restriction config.
+     *
+     * @return  boolean
+     */
+    protected function canCreateChildWithinScope($row, array $roots, array $config)
+    {
+        if ($config['scope_depth'] === 0 || $config['scope_mode'] === 'exclude') {
+            return true;
+        }
+
+        if ($config['scope_mode'] === 'none') {
+            return (int) $row->level < $config['scope_depth'];
+        }
+
+        foreach ($roots as $root) {
+            if ((int) $row->value === (int) $root->value) {
+                return $config['scope_depth'] >= 1;
+            }
+
+            if (
+                (int) $row->lft > (int) $root->lft
+                && (int) $row->rgt < (int) $root->rgt
+                && ((int) $row->level - (int) $root->level) < $config['scope_depth']
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1178,7 +1211,7 @@ class JFormFieldTagselect extends TagField
     }
 
     /**
-     * Determine whether the field is bound to native article tags.
+     * Determine whether the field is bound to native Joomla tags.
      *
      * @return  boolean
      */
@@ -1188,13 +1221,27 @@ class JFormFieldTagselect extends TagField
     }
 
     /**
-     * Determine whether the current form is the article edit form.
+     * Return the native tag type alias supported by the current edit form.
      *
-     * @return  boolean
+     * @return  string
      */
-    protected function isArticleNativeTagsForm()
+    protected function getNativeTagTypeAliasForForm()
     {
-        return $this->form && $this->form->getName() === 'com_content.article';
+        if (!$this->form) {
+            return '';
+        }
+
+        $formName = $this->form->getName();
+
+        if ($formName === 'com_content.article') {
+            return 'com_content.article';
+        }
+
+        if ($formName === 'com_categories.categorycom_content') {
+            return 'com_content.category';
+        }
+
+        return '';
     }
 
     /**
@@ -1243,13 +1290,15 @@ class JFormFieldTagselect extends TagField
     }
 
     /**
-     * Get the current native article tag ids constrained to this field's managed subset.
+     * Get the current native tag ids constrained to this field's managed subset.
      *
      * @return  array
      */
     protected function getManagedNativeTagIds()
     {
-        if (!$this->form) {
+        $typeAlias = $this->getNativeTagTypeAliasForForm();
+
+        if (!$this->form || $typeAlias === '') {
             return [];
         }
 
@@ -1260,7 +1309,7 @@ class JFormFieldTagselect extends TagField
 
             if ($itemId > 0) {
                 $helper = new TagsHelper();
-                $helper->getTagIds($itemId, 'com_content.article');
+                $helper->getTagIds($itemId, $typeAlias);
 
                 $nativeTagIds = $this->normaliseStoredValues($helper);
             }

@@ -1,6 +1,6 @@
 # plg_fields_tagselect
 
-Joomla Custom Fields plugin that adds a `tagselect` field type for selecting Joomla Tags, with configurable branch scoping, optional native article-tag storage and controlled tag creation.
+Joomla Custom Fields plugin that adds a `tagselect` field type for selecting Joomla Tags, with configurable branch scoping, optional native Joomla-tag storage and controlled tag creation.
 
 ## Repository Layout
 
@@ -17,11 +17,11 @@ Joomla Custom Fields plugin that adds a `tagselect` field type for selecting Joo
 Supported field parameters:
 
 - `multiple`: allow one or many tags.
-- `field_type`: store an independent custom-field value or manage native article tags.
+- `field_type`: store an independent custom-field value or manage native Joomla tags for articles and categories.
 - `mode`: `ajax` or `nested`.
 - `tag_scope_mode`: show all tags, only selected branches, or all tags except selected branches.
 - `scope_root_ids`: one-or-many root tags used by the current scope mode.
-- `include_descendants`: in Independent Tag Mode, include the whole selected subtree or only direct children.
+- `scope_depth`: maximum selectable levels below the scope roots (`0` means unlimited).
 - `leaf_only`: allow only terminal tags inside the allowed subtree.
 - `frontend_output`: render automatic frontend output as tag links or plain text.
 - `allow_tag_creation`: optionally allow editors to create tags from the field.
@@ -30,20 +30,20 @@ Supported field parameters:
 Behavior notes:
 
 - If `field_type = independent`, the field stores its own custom-field value, as before.
-- If `field_type = native_article_tags`, the field reads from and writes to the article's native `tags`.
+- If `field_type = native_article_tags`, the field reads from and writes to native article or category `tags`. The stored parameter name is retained, while the UI calls this `Native Joomla Tag Handler`.
+- Native handling is only available for `com_content.article` and `com_content.categories`. In any other context the option is disabled and runtime behavior safely falls back to independent custom-field storage.
 - If `tag_scope_mode = all`, the field can use the full tag tree.
 - If `tag_scope_mode = include`, editors only see tags from the union of the selected branches.
 - If `tag_scope_mode = exclude`, editors see all tags except the selected branches.
 - `exclude` scope always removes whole branches.
 - If `tag_scope_mode` is `include` or `exclude` but `scope_root_ids` is empty, the field fails safe back to `all`.
-- In `Native Article Tag Handler`, scoped branches always mean full subtrees.
-- In `Independent Tag Mode`, `include_descendants = No` limits `include` scope to the direct children of the chosen roots.
+- `scope_depth = 0` allows every descendant level. With `include` scope, `1` allows only direct children of each selected root; with `all` scope, `1` allows only top-level Joomla tags.
 - If `leaf_only = Yes`, only tags without children inside the permitted subtree are selectable.
 - If `allow_tag_creation = Yes`, explicit path input like `Parent/Child` first tries to resolve an existing allowed tag by path, and otherwise creates `Child` under an existing resolvable `Parent`.
 - If there is exactly one `include` scope root and the input has no explicit parent path, new tags are created under that configured root.
 - If there are zero or many scope roots, or the field uses `exclude`/`all` scope, plain input only creates a top-level tag when `allow_root_level_creation = Yes`.
 - If `allow_root_level_creation = Yes` in a restricted field, top-level tags also become selectable in that field.
-- In `Native Article Tag Handler`, save updates only the managed native-tag subset and leaves every other native article tag untouched.
+- In `Native Joomla Tag Handler`, save updates only the managed native-tag subset and leaves every other native tag on the item untouched.
 - Automatic frontend output can render inline tag links or plain text. For custom templates, the field object also exposes `tagselectTags` and `tagselectTagIds`.
 - Missing intermediate parents are not auto-created. Unresolvable paths fail safe instead of creating a literal tag title with `/`.
 - If a stored value later falls outside the allowed subtree because the config or tree changed, the field keeps the value visible and safe instead of breaking the form.
@@ -61,7 +61,7 @@ Implementation note:
 - `field_type`: `independent`
 - `tag_scope_mode`: `include`
 - `scope_root_ids`: tag `Source`
-- `include_descendants`: `Yes`
+- `scope_depth`: `0` (unlimited)
 - `leaf_only`: `Yes`
 - `allow_tag_creation`: `No`
 - `allow_root_level_creation`: `No`
@@ -77,7 +77,7 @@ Result:
 - `field_type`: `independent`
 - `tag_scope_mode`: `include`
 - `scope_root_ids`: tag `Worksheet Type`
-- `include_descendants`: `No`
+- `scope_depth`: `1`
 - `leaf_only`: `No`
 - `allow_tag_creation`: `Yes`
 - `allow_root_level_creation`: `No`
@@ -93,7 +93,7 @@ Result:
 - `field_type`: `independent`
 - `tag_scope_mode`: `include`
 - `scope_root_ids`: tags `Primary Audience`, `Secondary Audience`
-- `include_descendants`: `Yes`
+- `scope_depth`: `0` (unlimited)
 - `leaf_only`: `Yes`
 - `allow_tag_creation`: `Yes`
 - `allow_root_level_creation`: `Yes`
@@ -111,6 +111,7 @@ Result:
 - `field_type`: `native_article_tags`
 - `tag_scope_mode`: `include`
 - `scope_root_ids`: tag `Worksheet Type`
+- `scope_depth`: `0` (unlimited)
 - `leaf_only`: `No`
 - `allow_tag_creation`: `Yes`
 - `allow_root_level_creation`: `No`
@@ -136,6 +137,21 @@ Result:
 - The field manages every native article tag except those excluded taxonomy branches.
 - It works well as a companion field for "all remaining tags".
 - Plain input can create top-level tags, while excluded taxonomy branches remain hidden from this selector.
+
+### Example 6: Top-level native category tags
+
+- Field context: Categories (`com_content.categories`)
+- Field name: `category_taxonomy`
+- `field_type`: `native_article_tags` (`Native Joomla Tag Handler` in the UI)
+- `tag_scope_mode`: `all`
+- `scope_depth`: `1`
+- `allow_tag_creation`: `No`
+
+Result:
+
+- The category editor only sees top-level Joomla tags.
+- The field reads and writes the category's native tags, not a separate custom-field value.
+- Native tags outside the managed top-level subset stay untouched.
 
 ## Build
 
@@ -179,8 +195,8 @@ Release flow:
 3. Create and push a tag that matches the manifest version, prefixed with `v`:
 
 ```powershell
-git tag v1.6.1
-git push origin v1.6.1
+git tag v1.7.0
+git push origin v1.7.0
 ```
 
 4. GitHub Actions will:
@@ -191,7 +207,7 @@ git push origin v1.6.1
 
 Important:
 
-- The tag must match the manifest version exactly. Example: tag `v1.6.1` must match manifest version `1.6.1`.
+- The tag must match the manifest version exactly. Example: tag `v1.7.0` must match manifest version `1.7.0`.
 - Generated ZIP artifacts are intentionally kept out of git history.
 
 ## Install in Joomla 6
@@ -215,10 +231,10 @@ Then install or discover the plugin through Joomla as needed.
 
 1. Create a root tag like `Source` and a few nested child tags under it.
 2. Create a custom field with type `tagselect`.
-3. Set `field_type = independent`, `tag_scope_mode = include`, `scope_root_ids = Source`, `include_descendants = Yes`, `leaf_only = Yes`.
+3. Set `field_type = independent`, `tag_scope_mode = include`, `scope_root_ids = Source`, `scope_depth = 0`, `leaf_only = Yes`.
 4. Edit an Article and confirm the selector only shows tags from that subtree.
 5. Confirm non-leaf tags inside the subtree are excluded when `leaf_only = Yes`.
-6. Switch `include_descendants = No` and confirm only the direct children of the scope roots remain selectable.
+6. Set `scope_depth = 1` and confirm only the direct children of the scope roots remain selectable.
 7. Enable `allow_tag_creation = Yes`, type a new tag and save.
 8. Confirm the new tag is created under the configured include root and becomes selectable on reopen.
 9. Change the field config so that an already stored tag falls outside the allowed scope and confirm the form still loads safely.
@@ -228,4 +244,7 @@ Then install or discover the plugin through Joomla as needed.
 13. With `allow_root_level_creation = Yes`, type plain input without a parent path and confirm a top-level tag is created and remains selectable.
 14. Type an unresolvable path like `Missing Parent/New Child` and confirm the field does not create a literal tag containing `/`.
 15. Set `field_type = native_article_tags` with `tag_scope_mode = include`, save an article, and confirm the matching native article tags are updated while unrelated native tags remain untouched.
-16. Set `field_type = native_article_tags` with `tag_scope_mode = exclude`, save an article, and confirm the field manages the inverse "other tags" subset.
+16. Set `field_type = native_article_tags`, `tag_scope_mode = all`, and `scope_depth = 1`; confirm only top-level tags are selectable.
+17. Create the same field in the Categories context, save a category, and confirm its native category tags reload in the field.
+18. Create a tagselect field in an unsupported context and confirm the native option is disabled and normal custom-field storage is used.
+19. Set `field_type = native_article_tags` with `tag_scope_mode = exclude`, save an article, and confirm the field manages the inverse "other tags" subset.
